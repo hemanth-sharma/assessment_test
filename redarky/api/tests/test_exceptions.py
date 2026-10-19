@@ -13,9 +13,13 @@ from app.utils.exceptions import NotFoundException, DomainException, ConflictExc
 
 client = TestClient(app)
 
-# Override authentication for testing exception responses
-mock_user = User(id=uuid4(), email="test@example.com")
-app.dependency_overrides[get_current_user] = lambda: mock_user
+@pytest.fixture(autouse=True)
+def override_auth():
+    """Temporarily override authentication for testing exception responses without leaking state."""
+    mock_user = User(id=uuid4(), email="test@example.com")
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_domain_exception_structure():
@@ -49,5 +53,5 @@ def test_standardized_not_found_error_response():
     assert "success" in data
     assert data["success"] is False
     assert "error" in data
-    assert "type" in data["error"]
-    assert "message" in data["error"]
+    assert data["error"]["type"] == "RESOURCE_NOT_FOUND"
+    assert str(fake_id) in data["error"]["message"]
