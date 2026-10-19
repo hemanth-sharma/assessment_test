@@ -7,7 +7,7 @@ Lead creation is normally done by the matching engine (Stage 3).
 Users only UPDATE leads (status, notes) — they don't create them.
 """
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Sequence
 from uuid import UUID
 
 from sqlalchemy import select, func
@@ -149,3 +149,28 @@ async def to_lead_response(db: AsyncSession, lead: Lead) -> LeadResponse:
         resp.post_author = post.author
         resp.post_subreddit = post.subreddit
     return resp
+
+
+async def to_lead_responses_bulk(db: AsyncSession, leads: Sequence[Lead]) -> list[LeadResponse]:
+    """Optimized batch mapper: enriches multiple leads with post snapshots in 1 query."""
+    if not leads:
+        return []
+
+    post_ids = [lead.matched_post_id for lead in leads if lead.matched_post_id]
+    posts_map = {}
+    if post_ids:
+        posts_result = await db.execute(
+            select(MatchedPost).where(MatchedPost.id.in_(post_ids))
+        )
+        posts_map = {p.id: p for p in posts_result.scalars().all()}
+
+    responses = []
+    for lead in leads:
+        resp = LeadResponse.model_validate(lead)
+        post = posts_map.get(lead.matched_post_id)
+        if post:
+            resp.post_title = post.title
+            resp.post_author = post.author
+            resp.post_subreddit = post.subreddit
+        responses.append(resp)
+    return responses

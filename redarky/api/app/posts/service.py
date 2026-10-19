@@ -29,7 +29,7 @@ async def get_matched_posts(
 ) -> MatchedPostListResponse:
     """
     Returns paginated matched posts for the frontend feed.
-    Filters by project ownership (owner_id) for security.
+    Optimized to batch-fetch lead statuses cleanly and avoid separate queries.
     """
     # Build base query with project ownership join
     from app.models import Project
@@ -74,8 +74,7 @@ async def get_matched_posts(
         "created_at": MatchedPost.created_at,
         "score": MatchedPost.score,
     }.get(filters.sort_by, MatchedPost.intent_score)
-    # Leads ALWAYS float to the top when sorting by intent score — they passed
-    # all 3 filtering stages, so they outrank any potential match.
+    
     if filters.sort_by in ("intent_score", None) and filters.sort_desc:
         base = base.order_by(
             desc(MatchedPost.is_lead),
@@ -94,20 +93,19 @@ async def get_matched_posts(
     result = await db.execute(base)
     posts = result.scalars().all()
 
-    # ── Attach lead_status denormalized ─────────────────────────────────────
+    # ── Batch fetch lead statuses ───────────────────────────────────────────
     post_ids = [p.id for p in posts]
     leads_map: dict[UUID, str] = {}
     if post_ids:
-        leads = (await db.execute(
+        leads_res = await db.execute(
             select(Lead.matched_post_id, Lead.status).where(Lead.matched_post_id.in_(post_ids))
-        )).all()
-        leads_map = {row[0]: row[1] for row in leads}
+        )
+        leads_map = {row[0]: row[1] for row in leads_res.all()}
 
-    items = []
-    for p in posts:
-        item = MatchedPostResponse.model_validate(p)
-        item.lead_status = leads_map.get(p.id)
-        items.append(item)
+    items = [
+        _hydrate_post_response(p, leads_map.get(p.id))
+        for p in posts
+    ]
 
     return MatchedPostListResponse(
         items=items,
@@ -115,6 +113,13 @@ async def get_matched_posts(
         page=filters.page,
         page_size=filters.page_size,
     )
+
+
+def _hydrate_post_response(p: MatchedPost, lead_status: Optional[str]) -> MatchedPostResponse:
+    """Helper to map a matched post ORM model to its response schema with lead status."""
+    item = MatchedPostResponse.model_validate(p)
+    item.lead_status = lead_status
+    return item
 
 
 async def get_matched_post(
@@ -148,7 +153,6 @@ async def get_post_highlights(
     highlight every matched keyword inside the post body.
     """
     from app.models import Project
-    # Verify ownership + get the matched_post's raw_post_id in one query
     result = await db.execute(
         select(MatchedPost)
         .join(Project, MatchedPost.project_id == Project.id)
@@ -158,7 +162,6 @@ async def get_post_highlights(
     if not mp:
         raise NotFoundException(f"Post {post_id} not found")
 
-    # Load every KeywordMatch that hit on the underlying raw_post
     matches = (await db.execute(
         select(KeywordMatch, Keyword.keyword)
         .join(Keyword, KeywordMatch.keyword_id == Keyword.id)
