@@ -2,21 +2,12 @@
 app/projects/router.py
 
 Project CRUD + pipeline activation + dashboard stats.
-
-User flow mapping:
-  POST   /projects                → user creates a project (with goal, company)
-  GET    /projects                → list user's projects
-  GET    /projects/{id}           → view a project
-  PUT    /projects/{id}           → edit goal / company / retention
-  DELETE /projects/{id}           → delete
-  POST   /projects/{id}/activate  → frontend "Activate Pipeline" button
-  POST   /projects/{id}/deactivate
-  GET    /projects/{id}/stats     → dashboard counts (matched_posts, leads, etc.)
+Cleaned up to let global exception handlers manage domain exceptions natively.
 """
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -26,7 +17,6 @@ from app.projects.schemas import (
     ProjectCreate, ProjectUpdate, ProjectResponse, PipelineActivate, ProjectStats,
 )
 from app.projects import service
-from app.utils.exceptions import NotFoundException
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -54,10 +44,7 @@ async def read_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    try:
-        return await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
+    return await service.get_project(db=db, project_id=id, owner_id=current_user.id)
 
 
 @router.put("/{id}", response_model=ProjectResponse)
@@ -67,10 +54,7 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    try:
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
+    project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
     return await service.update_project(db=db, project=project, project_in=project_in)
 
 
@@ -80,30 +64,18 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    try:
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
+    project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
     await service.delete_project(db=db, project=project)
     return None
 
 
-# ── Pipeline activation (frontend button) ────────────────────────────────────
 @router.post("/{id}/activate", response_model=ProjectResponse)
 async def activate_pipeline(
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Flips is_pipeline_active=True. Celery Beat will pick this project up on
-    the next 30-min cycle and include its keywords + sources in the shared
-    Go scraper batch.
-    """
-    try:
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
+    project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
     return await service.activate_pipeline(db=db, project=project)
 
 
@@ -113,26 +85,15 @@ async def deactivate_pipeline(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Pauses pipeline for this project. Does NOT remove keywords/sources
-    from the shared MonitoredSource registry — other projects may share them."""
-    try:
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
+    project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
     return await service.deactivate_pipeline(db=db, project=project)
 
 
-# ── Dashboard stats ──────────────────────────────────────────────────────────
 @router.get("/{id}/stats", response_model=ProjectStats)
 async def project_stats(
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Aggregated counts for the project dashboard — matched posts, leads,
-    unactioned leads, active keywords/sources, last scraper run time."""
-    try:
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
+    project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
     return await service.get_project_stats(db=db, project=project)
