@@ -1,5 +1,11 @@
+"""
+tests/test_performance.py
+
+Performance and optimization unit tests for bulk lead hydration helpers.
+"""
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
+from datetime import datetime, timezone
 import pytest
 
 from app.leads.service import to_lead_responses_bulk
@@ -24,6 +30,7 @@ async def test_to_lead_responses_bulk_hydration():
     lead_id = uuid4()
     post_id = uuid4()
     project_id = uuid4()
+    now = datetime.now(timezone.utc)
 
     mock_lead = Lead(
         id=lead_id,
@@ -33,6 +40,9 @@ async def test_to_lead_responses_bulk_hydration():
         intent_score=0.9,
         url="https://reddit.com/r/saas/test",
         matched_keyword="saas",
+        llm_reason="High intent buying signal detected",
+        created_at=now,
+        updated_at=now,
     )
 
     mock_post = MatchedPost(
