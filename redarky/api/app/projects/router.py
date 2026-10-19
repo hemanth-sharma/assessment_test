@@ -2,16 +2,7 @@
 app/projects/router.py
 
 Project CRUD + pipeline activation + dashboard stats.
-
-User flow mapping:
-  POST   /projects                → user creates a project (with goal, company)
-  GET    /projects                → list user's projects
-  GET    /projects/{id}           → view a project
-  PUT    /projects/{id}           → edit goal / company / retention
-  DELETE /projects/{id}           → delete
-  POST   /projects/{id}/activate  → frontend "Activate Pipeline" button
-  POST   /projects/{id}/deactivate
-  GET    /projects/{id}/stats     → dashboard counts (matched_posts, leads, etc.)
+Cleaned up to let global exception handlers manage domain exceptions natively.
 """
 import uuid
 from typing import List
@@ -53,7 +44,6 @@ async def read_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Global exception handler catches NotFoundException automatically
     return await service.get_project(db=db, project_id=id, owner_id=current_user.id)
 
 
@@ -64,13 +54,7 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     return await service.update_project(db=db, project=project, project_in=project_in)
 
 
@@ -80,13 +64,7 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     await service.delete_project(db=db, project=project)
     return None
 
@@ -97,13 +75,7 @@ async def activate_pipeline(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     return await service.activate_pipeline(db=db, project=project)
 
 
@@ -113,13 +85,7 @@ async def deactivate_pipeline(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     return await service.deactivate_pipeline(db=db, project=project)
 
 
@@ -129,11 +95,5 @@ async def project_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-        project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     project = await service.get_project(db=db, project_id=id, owner_id=current_user.id)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=e.message)
     return await service.get_project_stats(db=db, project=project)

@@ -1,10 +1,22 @@
 """
 tests/test_exceptions.py
 
-Unit tests verifying domain exception structure and custom handlers.
+Unit and integration tests verifying exception handling and standardized error JSON responses.
 """
 import pytest
+from uuid import uuid4
+from fastapi.testclient import TestClient
+from app.main import app
+from app.auth.dependencies import get_current_user
+from app.auth.models import User
 from app.utils.exceptions import NotFoundException, DomainException, ConflictException
+
+client = TestClient(app)
+
+# Override authentication for testing exception responses
+mock_user = User(id=uuid4(), email="test@example.com")
+app.dependency_overrides[get_current_user] = lambda: mock_user
+
 
 def test_domain_exception_structure():
     """Verify base domain exception correctly sets message and attributes."""
@@ -25,3 +37,17 @@ def test_conflict_exception_message():
     exc = ConflictException("Resource already exists")
     assert exc.message == "Resource already exists"
     assert isinstance(exc, DomainException)
+
+
+def test_standardized_not_found_error_response():
+    """Ensure accessing a non-existent project endpoint returns the standardized JSON error shape."""
+    fake_id = uuid4()
+    response = client.get(f"/projects/{fake_id}")
+    
+    assert response.status_code == 404
+    data = response.json()
+    assert "success" in data
+    assert data["success"] is False
+    assert "error" in data
+    assert "type" in data["error"]
+    assert "message" in data["error"]
