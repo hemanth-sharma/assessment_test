@@ -15,7 +15,7 @@ from uuid import UUID
 from sqlalchemy import select, func, desc, asc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import MatchedPost, KeywordMatch, Lead
+from app.models import MatchedPost, KeywordMatch, Lead, Keyword
 from app.posts.schemas import MatchedPostFilter, MatchedPostListResponse, MatchedPostResponse
 from app.utils.exceptions import NotFoundException
 
