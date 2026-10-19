@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redarky_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  go_scraper:
+    build:
+      context: ../
+      dockerfile: redarky/scraper/Dockerfile
+    container_name: redarky_go_scraper
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  api:
+    build:
+      context: ../
+      dockerfile: redarky/api/Dockerfile
+    container_name: redarky_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:password@host.docker.internal:5432/redarky_db}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - GO_SCRAPER_URL=http://go_scraper:8081/scrape
+      - PYTHONPATH=/app/redarky/api
+    volumes:
+      - ./api:/app/redarky/api
+      - ../redarky_data_s3:/app/redarky_data_s3
+    depends_on:
+      redis:
+        condition: service_healthy
+      go_scraper:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: ../
+      dockerfile: redarky/api/Dockerfile
+    container_name: redarky_worker
+    command: celery -A app.workers.celery_app.celery worker --loglevel=info -P threads
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:password@host.docker.internal:5432/redarky_db}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - GO_SCRAPER_URL=http://go_scraper:8081/scrape
+      - PYTHONPATH=/app/redarky/api
+    depends_on:
+      - redis
+      - api
+
+  celery_beat:
+    build:
+      context: ../
+      dockerfile: redarky/api/Dockerfile
+    container_name: redarky_beat
+    command: celery -A app.workers.celery_app.celery beat --loglevel=info
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:password@host.docker.internal:5432/redarky_db}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONPATH=/app/redarky/api
+    depends_on:
+      - redis
+      - api
